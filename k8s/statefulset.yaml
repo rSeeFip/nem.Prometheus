@@ -34,8 +34,8 @@ spec:
           args:
             - --config.file=/etc/prometheus/prometheus.yml
             - --storage.tsdb.path=/prometheus
-            - --storage.tsdb.retention.time=15d
-            - --storage.tsdb.retention.size=18GB
+            - --storage.tsdb.retention.time=7d
+            - --storage.tsdb.retention.size=4GB
             - --web.console.libraries=/usr/share/prometheus/console_libraries
             - --web.console.templates=/usr/share/prometheus/consoles
           ports:

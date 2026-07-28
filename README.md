@@ -47,5 +47,5 @@ metadata:
     prometheus.io/port: "8080"
 ```
 
-The default retention is 15 days with an 18 GB TSDB size ceiling on a 20 GiB
-`local-path` volume.
+The default retention is 7 days with a 4 GB TSDB size ceiling on a thin-provisioned
+20 GiB `local-path` volume, leaving node-level headroom for compaction.
