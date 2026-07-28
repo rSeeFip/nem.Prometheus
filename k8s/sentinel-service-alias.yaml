@@ -1,0 +1,18 @@
+# Sentinel historically uses http://prometheus:9090. This same-namespace alias
+# preserves that contract while Prometheus is isolated in `monitoring`.
+apiVersion: v1
+kind: Service
+metadata:
+  name: prometheus
+  namespace: nem-apps
+  labels:
+    app.kubernetes.io/name: prometheus
+    app.kubernetes.io/part-of: nem-platform
+spec:
+  type: ExternalName
+  externalName: prometheus.monitoring.svc.cluster.local
+  ports:
+    - name: http
+      port: 9090
+      targetPort: 9090
+      protocol: TCP
