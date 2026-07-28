@@ -1,0 +1,28 @@
+# The existing Sentinel policy is default-deny for egress. NetworkPolicy rules
+# are additive, so this grants only the Prometheus query path without changing
+# Sentinel's broader application policy.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: nem-sentinel-prometheus-egress
+  namespace: nem-apps
+  labels:
+    app.kubernetes.io/name: prometheus
+    app.kubernetes.io/part-of: nem-platform
+spec:
+  podSelector:
+    matchLabels:
+      app: nem-sentinel
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: monitoring
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: prometheus
+      ports:
+        - port: 9090
+          protocol: TCP
