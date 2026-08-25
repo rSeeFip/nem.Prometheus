@@ -13,6 +13,9 @@ data:
       evaluation_interval: 15s
       scrape_timeout: 10s
 
+    rule_files:
+      - /etc/prometheus/nem-slo-rules.yaml
+
     scrape_configs:
       - job_name: prometheus
         static_configs:
@@ -74,3 +77,164 @@ data:
           - source_labels: [__meta_kubernetes_pod_name]
             action: replace
             target_label: pod
+
+  nem-slo-rules.yaml: |
+    groups:
+      - name: nem-sentinel-slos
+        interval: 30s
+        rules:
+          - record: nem_slo:sentinel_target_available
+            expr: max(up{namespace="nem-apps",pod=~"nem-sentinel-.*"}) or vector(0)
+          - record: nem_slo:sentinel_mapek_failure_ratio:5m
+            expr: |
+              (sum(rate(nem_sentinel_mapek_cycles_completed_total{result=~"executed_failure|error"}[5m])) or vector(0))
+              /
+              clamp_min((sum(rate(nem_sentinel_mapek_cycles_completed_total[5m])) or vector(0)), 0.000001)
+          - record: nem_slo:sentinel_mapek_latency_milliseconds:p95_5m
+            expr: histogram_quantile(0.95, sum by (le) (rate(nem_sentinel_mapek_cycles_duration_milliseconds_bucket[5m])))
+          - record: nem_slo:sentinel_remediation_blocked_rate:5m
+            expr: sum by (reason) (rate(nem_sentinel_remediation_blocked_total[5m]))
+          - alert: SentinelTargetDown
+            expr: absent(up{namespace="nem-apps",pod=~"nem-sentinel-.*"}) or max(up{namespace="nem-apps",pod=~"nem-sentinel-.*"}) == 0
+            for: 5m
+            labels:
+              severity: critical
+              service: nem-sentinel
+              team: platform
+            annotations:
+              summary: "Sentinel metrics target is unavailable"
+              description: "Prometheus has not scraped a healthy nem.Sentinel target in nem-apps for five minutes."
+              runbook_url: "https://github.com/rSeeFip/nem.Prometheus/blob/main/docs/runbooks/telemetry-slos.md#sentinel-target-down"
+          - alert: SentinelMapekFailureRatioHigh
+            expr: nem_slo:sentinel_mapek_failure_ratio:5m > 0.05
+            for: 10m
+            labels:
+              severity: critical
+              service: nem-sentinel
+              team: platform
+            annotations:
+              summary: "Sentinel MAPE-K cycle failure ratio exceeds 5%"
+              description: "MAPE-K terminal results classified as executed_failure or error exceeded 5% over ten minutes."
+              runbook_url: "https://github.com/rSeeFip/nem.Prometheus/blob/main/docs/runbooks/telemetry-slos.md#sentinel-mapek-failures"
+          - alert: SentinelMapekLatencyHigh
+            expr: nem_slo:sentinel_mapek_latency_milliseconds:p95_5m > 5000
+            for: 10m
+            labels:
+              severity: warning
+              service: nem-sentinel
+              team: platform
+            annotations:
+              summary: "Sentinel MAPE-K p95 latency exceeds five seconds"
+              description: "The p95 observation-to-decision cycle duration remained above 5000ms for ten minutes."
+              runbook_url: "https://github.com/rSeeFip/nem.Prometheus/blob/main/docs/runbooks/telemetry-slos.md#sentinel-mapek-latency"
+          - alert: SentinelRemediationBlockedStorm
+            expr: sum(nem_slo:sentinel_remediation_blocked_rate:5m) > 0.05
+            for: 5m
+            labels:
+              severity: warning
+              service: nem-sentinel
+              team: platform
+            annotations:
+              summary: "Sentinel remediation blocks are repeating"
+              description: "Safety gates blocked more than 0.05 remediation attempts per second for five minutes. Inspect the bounded reason breakdown."
+              runbook_url: "https://github.com/rSeeFip/nem.Prometheus/blob/main/docs/runbooks/telemetry-slos.md#sentinel-remediation-blocks"
+
+      - name: nem-profitcenter-slos
+        interval: 30s
+        rules:
+          - record: nem_slo:profitcenter_target_available
+            expr: max(up{namespace="nem-apps",service="nem-profit-center"}) or vector(0)
+          - record: nem_slo:profitcenter_processing_accepted_ratio:5m
+            expr: |
+              (sum(rate(profitcenter_message_processing_seconds_count{outcome=~"success|duplicate"}[5m])) or vector(0))
+              /
+              clamp_min((sum(rate(profitcenter_message_processing_seconds_count[5m])) or vector(0)), 0.000001)
+          - record: nem_slo:profitcenter_processing_latency_seconds:p95_5m
+            expr: histogram_quantile(0.95, sum by (le) (rate(profitcenter_message_processing_seconds_bucket[5m])))
+          - record: nem_slo:profitcenter_messaging_failure_ratio:5m
+            expr: |
+              (sum(rate(profitcenter_messaging_publish_failures_total[5m])) or vector(0))
+              /
+              clamp_min((sum(rate(profitcenter_messaging_publish_attempts_total[5m])) or vector(0)), 0.000001)
+          - record: nem_slo:profitcenter_ml_prediction_error_ratio:15m
+            expr: |
+              (sum(rate(profitcenter_ml_prediction_errors_total[15m])) or vector(0))
+              /
+              clamp_min((sum(rate(profitcenter_ml_predictions_total[15m])) or vector(0)), 0.000001)
+          - alert: ProfitCenterTargetDown
+            expr: absent(up{namespace="nem-apps",service="nem-profit-center"}) or max(up{namespace="nem-apps",service="nem-profit-center"}) == 0
+            for: 5m
+            labels:
+              severity: critical
+              service: nem-profit-center
+              team: platform
+            annotations:
+              summary: "ProfitCenter metrics target is unavailable"
+              description: "Prometheus has not scraped a healthy nem.ProfitCenter Service target for five minutes."
+              runbook_url: "https://github.com/rSeeFip/nem.Prometheus/blob/main/docs/runbooks/telemetry-slos.md#profitcenter-target-down"
+          - alert: ProfitCenterProcessingSuccessLow
+            expr: nem_slo:profitcenter_processing_accepted_ratio:5m < 0.99 and sum(rate(profitcenter_message_processing_seconds_count[5m])) > 0
+            for: 10m
+            labels:
+              severity: critical
+              service: nem-profit-center
+              team: platform
+            annotations:
+              summary: "ProfitCenter accepted processing ratio is below 99%"
+              description: "Successful or idempotently duplicated message outcomes remained below 99% for ten minutes."
+              runbook_url: "https://github.com/rSeeFip/nem.Prometheus/blob/main/docs/runbooks/telemetry-slos.md#profitcenter-processing-failures"
+          - alert: ProfitCenterProcessingLatencyHigh
+            expr: nem_slo:profitcenter_processing_latency_seconds:p95_5m > 5
+            for: 10m
+            labels:
+              severity: warning
+              service: nem-profit-center
+              team: platform
+            annotations:
+              summary: "ProfitCenter processing p95 latency exceeds five seconds"
+              description: "Message-processing p95 latency remained above five seconds for ten minutes."
+              runbook_url: "https://github.com/rSeeFip/nem.Prometheus/blob/main/docs/runbooks/telemetry-slos.md#profitcenter-processing-latency"
+          - alert: ProfitCenterIngestionBacklog
+            expr: max(profitcenter_ingestion_queue_depth_events) > 100 or max(profitcenter_ingestion_lag_seconds) > 300
+            for: 10m
+            labels:
+              severity: warning
+              service: nem-profit-center
+              team: platform
+            annotations:
+              summary: "ProfitCenter ingestion is backlogged"
+              description: "Queue depth exceeded 100 events or ingestion lag exceeded five minutes for ten minutes."
+              runbook_url: "https://github.com/rSeeFip/nem.Prometheus/blob/main/docs/runbooks/telemetry-slos.md#profitcenter-ingestion-backlog"
+          - alert: ProfitCenterMessagingFailureRatioHigh
+            expr: nem_slo:profitcenter_messaging_failure_ratio:5m > 0.05 and sum(rate(profitcenter_messaging_publish_attempts_total[5m])) > 0
+            for: 10m
+            labels:
+              severity: critical
+              service: nem-profit-center
+              team: platform
+            annotations:
+              summary: "ProfitCenter messaging failure ratio exceeds 5%"
+              description: "Publishing failures exceeded 5% of attempts for ten minutes."
+              runbook_url: "https://github.com/rSeeFip/nem.Prometheus/blob/main/docs/runbooks/telemetry-slos.md#profitcenter-messaging-failures"
+          - alert: ProfitCenterDeadLetterQueueNotEmpty
+            expr: max(profitcenter_messaging_dlq_count) > 0
+            for: 10m
+            labels:
+              severity: warning
+              service: nem-profit-center
+              team: platform
+            annotations:
+              summary: "ProfitCenter dead-letter queue is not empty"
+              description: "One or more messages remained in the ProfitCenter dead-letter queue for ten minutes."
+              runbook_url: "https://github.com/rSeeFip/nem.Prometheus/blob/main/docs/runbooks/telemetry-slos.md#profitcenter-dead-letter-queue"
+          - alert: ProfitCenterMlPredictionErrorsHigh
+            expr: nem_slo:profitcenter_ml_prediction_error_ratio:15m > 0.05 and sum(rate(profitcenter_ml_predictions_total[15m])) > 0
+            for: 15m
+            labels:
+              severity: warning
+              service: nem-profit-center
+              team: platform
+            annotations:
+              summary: "ProfitCenter ML prediction error ratio exceeds 5%"
+              description: "Prediction errors exceeded 5% of predictions over fifteen minutes."
+              runbook_url: "https://github.com/rSeeFip/nem.Prometheus/blob/main/docs/runbooks/telemetry-slos.md#profitcenter-ml-prediction-errors"
