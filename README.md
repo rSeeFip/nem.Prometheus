@@ -13,6 +13,7 @@ keeps existing clients such as nem.Sentinel working at
 
 ```bash
 kubectl apply -k k8s
+kubectl rollout restart statefulset/prometheus -n monitoring
 kubectl rollout status statefulset/prometheus -n monitoring --timeout=5m
 ```
 
@@ -21,7 +22,9 @@ kubectl rollout status statefulset/prometheus -n monitoring --timeout=5m
 ```bash
 ./scripts/validate.sh
 kubectl exec -n monitoring prometheus-0 -- promtool check config /etc/prometheus/prometheus.yml
+kubectl exec -n monitoring prometheus-0 -- promtool check rules /etc/prometheus/nem-slo-rules.yaml
 kubectl exec -n monitoring prometheus-0 -- wget -qO- http://localhost:9090/-/ready
+kubectl exec -n monitoring prometheus-0 -- wget -qO- http://localhost:9090/api/v1/rules
 kubectl exec -n nem-apps deploy/nem-sentinel -c nem-sentinel -- \
   wget -qO- http://prometheus:9090/-/ready
 kubectl exec -n nem-apps deploy/nem-sentinel -c nem-sentinel -- \
@@ -49,3 +52,14 @@ metadata:
 
 The default retention is 7 days with a 4 GB TSDB size ceiling on a thin-provisioned
 20 GiB `local-path` volume, leaving node-level headroom for compaction.
+
+## SLO rules
+
+`k8s/configmap.yaml` embeds `nem-slo-rules.yaml` beside `prometheus.yml` under
+`/etc/prometheus`. The rules cover Sentinel target availability, MAPE-K failure
+ratio/latency/remediation blocks, and ProfitCenter target, processing, ingestion,
+messaging, DLQ, and ML health. Alert procedures are documented in
+[`docs/runbooks/telemetry-slos.md`](docs/runbooks/telemetry-slos.md).
+
+Prometheus does not expose lifecycle reload in this deployment. Apply ConfigMap
+changes and restart the StatefulSet before verifying `/api/v1/rules`.
