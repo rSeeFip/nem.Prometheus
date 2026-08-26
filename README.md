@@ -58,7 +58,21 @@ The default retention is 7 days with a 4 GB TSDB size ceiling on a thin-provisio
 `k8s/configmap.yaml` embeds `nem-slo-rules.yaml` beside `prometheus.yml` under
 `/etc/prometheus`. The rules cover Sentinel target availability, MAPE-K failure
 ratio/latency/remediation blocks, and ProfitCenter target, processing, ingestion,
-messaging, DLQ, and ML health. Alert procedures are documented in
+messaging, DLQ, and ML health. They also define 1% error-budget burn-rate
+governance for Sentinel MAPE-K outcomes (`executed_failure` and `error`) and
+ProfitCenter processing outcomes other than `success` and `duplicate`.
+
+The governance rules use the standard 5m+1h, 30m+6h, and 6h+3d multi-window
+patterns. Critical fast and medium alerts require traffic in both windows; the
+warning slow alert requires sustained traffic across 6h and 3d. This protects
+low-volume services from ratio-only pages. `tests/nem-slo-rules.test.yaml` is
+executed by `./scripts/validate.sh` through a local `promtool` or the pinned
+Prometheus container image.
+
+`Watchdog` is deliberately labeled `game_day="true"` and is routed to the
+Alertmanager `game-day-noop` receiver. `AlertmanagerTargetDown` uses only the
+annotated Alertmanager Service scrape's `up` metric or its absence; it does not
+assume any Alertmanager delivery metric. Alert procedures are documented in
 [`docs/runbooks/telemetry-slos.md`](docs/runbooks/telemetry-slos.md).
 
 Prometheus does not expose lifecycle reload in this deployment. Apply ConfigMap
