@@ -4,7 +4,13 @@ resources:
   - namespace.yaml
   - rbac.yaml
   - configmap.yaml
+  - alertmanager-configmap.yaml
+  - alertmanager-externalsecret.yaml
+  - alertmanager-serviceaccount.yaml
   - service.yaml
+  - alertmanager-service.yaml
   - statefulset.yaml
+  - alertmanager-statefulset.yaml
+  - alertmanager-networkpolicy.yaml
   - sentinel-service-alias.yaml
   - sentinel-prometheus-egress.yaml

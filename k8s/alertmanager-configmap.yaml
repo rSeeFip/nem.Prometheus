@@ -1,0 +1,48 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: alertmanager-config
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/name: alertmanager
+    app.kubernetes.io/part-of: nem-platform
+data:
+  alertmanager.yml: |
+    global:
+      resolve_timeout: 5m
+
+    route:
+      receiver: nem-comms
+      group_by: ["alertname", "service", "severity"]
+      group_wait: 30s
+      group_interval: 5m
+      repeat_interval: 4h
+      routes:
+        - receiver: game-day-noop
+          matchers:
+            - 'game_day="true"'
+        - receiver: nem-comms
+          matchers:
+            - 'severity="critical"'
+        - receiver: nem-comms
+          matchers:
+            - 'severity="warning"'
+
+    inhibit_rules:
+      - source_matchers:
+          - 'severity="critical"'
+        target_matchers:
+          - 'severity="warning"'
+        equal: ["alertname", "service"]
+
+    receivers:
+      - name: game-day-noop
+      - name: nem-comms
+        webhook_configs:
+          - url: http://nem-comms.nem-apps.svc.cluster.local:5280/api/v1/alerts/grafana
+            send_resolved: true
+            http_config:
+              oauth2:
+                client_id: nem-alertmanager
+                client_secret_file: /etc/alertmanager/secrets/client-secret
+                token_url: http://keycloak.platform-identity.svc.cluster.local:8080/auth/realms/nem/protocol/openid-connect/token
