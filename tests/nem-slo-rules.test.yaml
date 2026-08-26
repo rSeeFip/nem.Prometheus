@@ -1,0 +1,114 @@
+rule_files:
+  - nem-slo-rules.yaml
+
+evaluation_interval: 1m
+
+tests:
+  - name: Sentinel and ProfitCenter fast burn alerts fire with sustained, sufficient traffic
+    interval: 1m
+    input_series:
+      - series: 'nem_sentinel_mapek_cycles_completed_total{result="success"}'
+        values: '0+80x65'
+      - series: 'nem_sentinel_mapek_cycles_completed_total{result="error"}'
+        values: '0+20x65'
+      - series: 'profitcenter_message_processing_seconds_count{outcome="success"}'
+        values: '0+80x65'
+      - series: 'profitcenter_message_processing_seconds_count{outcome="failed"}'
+        values: '0+20x65'
+    alert_rule_test:
+      - eval_time: 1h3m
+        alertname: SentinelSLOErrorBudgetBurnFast
+        exp_alerts:
+          - exp_labels:
+              alertname: SentinelSLOErrorBudgetBurnFast
+              severity: critical
+              service: nem-sentinel
+              slo: mapek-outcome
+              team: platform
+            exp_annotations:
+              summary: "Sentinel is burning its 1% MAPE-K error budget quickly"
+              description: "Bad MAPE-K outcomes are consuming the 1% error budget at more than 14.4x over both 5m and 1h, with sufficient traffic."
+              runbook_url: "https://github.com/rSeeFip/nem.Prometheus/blob/main/docs/runbooks/telemetry-slos.md#sentinel-error-budget-burn"
+      - eval_time: 1h3m
+        alertname: ProfitCenterSLOErrorBudgetBurnFast
+        exp_alerts:
+          - exp_labels:
+              alertname: ProfitCenterSLOErrorBudgetBurnFast
+              severity: critical
+              service: nem-profit-center
+              slo: processing-outcome
+              team: platform
+            exp_annotations:
+              summary: "ProfitCenter is burning its 1% processing error budget quickly"
+              description: "Non-success and non-duplicate processing outcomes are consuming the 1% error budget at more than 14.4x over both 5m and 1h, with sufficient traffic."
+              runbook_url: "https://github.com/rSeeFip/nem.Prometheus/blob/main/docs/runbooks/telemetry-slos.md#profitcenter-error-budget-burn"
+
+  - name: SLO burn alerts stay inactive while outcomes meet the 1% objective
+    interval: 1m
+    input_series:
+      - series: 'nem_sentinel_mapek_cycles_completed_total{result="success"}'
+        values: '0+100x65'
+      - series: 'nem_sentinel_mapek_cycles_completed_total{result="error"}'
+        values: '0+1x65'
+      - series: 'profitcenter_message_processing_seconds_count{outcome="success"}'
+        values: '0+100x65'
+      - series: 'profitcenter_message_processing_seconds_count{outcome="failed"}'
+        values: '0+1x65'
+    alert_rule_test:
+      - eval_time: 1h3m
+        alertname: SentinelSLOErrorBudgetBurnFast
+        exp_alerts: []
+      - eval_time: 1h3m
+        alertname: ProfitCenterSLOErrorBudgetBurnFast
+        exp_alerts: []
+
+  - name: Low traffic does not page even when all observed outcomes are bad
+    interval: 1m
+    input_series:
+      - series: 'nem_sentinel_mapek_cycles_completed_total{result="error"}'
+        values: '0+1x65'
+      - series: 'profitcenter_message_processing_seconds_count{outcome="failed"}'
+        values: '0+1x65'
+    alert_rule_test:
+      - eval_time: 1h3m
+        alertname: SentinelSLOErrorBudgetBurnFast
+        exp_alerts: []
+      - eval_time: 1h3m
+        alertname: ProfitCenterSLOErrorBudgetBurnFast
+        exp_alerts: []
+
+  - name: Watchdog is active and explicitly marked for the game-day no-op route
+    interval: 1m
+    alert_rule_test:
+      - eval_time: 2m
+        alertname: Watchdog
+        exp_alerts:
+          - exp_labels:
+              alertname: Watchdog
+              game_day: "true"
+              severity: none
+              service: prometheus
+              team: platform
+            exp_annotations:
+              summary: "Prometheus alert pipeline watchdog"
+              description: "This dead-man alert is intentionally routed to the game-day no-op receiver."
+              runbook_url: "https://github.com/rSeeFip/nem.Prometheus/blob/main/docs/runbooks/telemetry-slos.md#watchdog-game-day"
+
+  - name: Alertmanager target availability fires only from scrape health
+    interval: 1m
+    input_series:
+      - series: 'up{namespace="monitoring",service="alertmanager"}'
+        values: '0+0x7'
+    alert_rule_test:
+      - eval_time: 6m
+        alertname: AlertmanagerTargetDown
+        exp_alerts:
+          - exp_labels:
+              alertname: AlertmanagerTargetDown
+              severity: critical
+              service: alertmanager
+              team: platform
+            exp_annotations:
+              summary: "Alertmanager metrics target is unavailable"
+              description: "Prometheus has not scraped a healthy Alertmanager Service target for five minutes."
+              runbook_url: "https://github.com/rSeeFip/nem.Prometheus/blob/main/docs/runbooks/telemetry-slos.md#alertmanager-target-down"

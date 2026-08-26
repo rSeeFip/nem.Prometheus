@@ -16,6 +16,11 @@ data:
     rule_files:
       - /etc/prometheus/nem-slo-rules.yaml
 
+    alerting:
+      alertmanagers:
+        - static_configs:
+            - targets: ["alertmanager.monitoring.svc.cluster.local:9093"]
+
     scrape_configs:
       - job_name: prometheus
         static_configs:
@@ -238,3 +243,195 @@ data:
               summary: "ProfitCenter ML prediction error ratio exceeds 5%"
               description: "Prediction errors exceeded 5% of predictions over fifteen minutes."
               runbook_url: "https://github.com/rSeeFip/nem.Prometheus/blob/main/docs/runbooks/telemetry-slos.md#profitcenter-ml-prediction-errors"
+
+      - name: nem-slo-burn-rate-governance
+        interval: 30s
+        rules:
+          - record: nem_slo:sentinel_mapek_error_budget_burn_rate:5m
+            expr: |
+              (
+                (sum(rate(nem_sentinel_mapek_cycles_completed_total{result=~"executed_failure|error"}[5m])) or vector(0))
+                /
+                clamp_min((sum(rate(nem_sentinel_mapek_cycles_completed_total[5m])) or vector(0)), 0.000001)
+              ) / 0.01
+          - record: nem_slo:sentinel_mapek_error_budget_burn_rate:1h
+            expr: |
+              (
+                (sum(rate(nem_sentinel_mapek_cycles_completed_total{result=~"executed_failure|error"}[1h])) or vector(0))
+                /
+                clamp_min((sum(rate(nem_sentinel_mapek_cycles_completed_total[1h])) or vector(0)), 0.000001)
+              ) / 0.01
+          - record: nem_slo:sentinel_mapek_error_budget_burn_rate:30m
+            expr: |
+              (
+                (sum(rate(nem_sentinel_mapek_cycles_completed_total{result=~"executed_failure|error"}[30m])) or vector(0))
+                /
+                clamp_min((sum(rate(nem_sentinel_mapek_cycles_completed_total[30m])) or vector(0)), 0.000001)
+              ) / 0.01
+          - record: nem_slo:sentinel_mapek_error_budget_burn_rate:6h
+            expr: |
+              (
+                (sum(rate(nem_sentinel_mapek_cycles_completed_total{result=~"executed_failure|error"}[6h])) or vector(0))
+                /
+                clamp_min((sum(rate(nem_sentinel_mapek_cycles_completed_total[6h])) or vector(0)), 0.000001)
+              ) / 0.01
+          - record: nem_slo:sentinel_mapek_error_budget_burn_rate:3d
+            expr: |
+              (
+                (sum(rate(nem_sentinel_mapek_cycles_completed_total{result=~"executed_failure|error"}[3d])) or vector(0))
+                /
+                clamp_min((sum(rate(nem_sentinel_mapek_cycles_completed_total[3d])) or vector(0)), 0.000001)
+              ) / 0.01
+          - record: nem_slo:profitcenter_processing_error_budget_burn_rate:5m
+            expr: |
+              (
+                (sum(rate(profitcenter_message_processing_seconds_count{outcome!~"success|duplicate"}[5m])) or vector(0))
+                /
+                clamp_min((sum(rate(profitcenter_message_processing_seconds_count[5m])) or vector(0)), 0.000001)
+              ) / 0.01
+          - record: nem_slo:profitcenter_processing_error_budget_burn_rate:1h
+            expr: |
+              (
+                (sum(rate(profitcenter_message_processing_seconds_count{outcome!~"success|duplicate"}[1h])) or vector(0))
+                /
+                clamp_min((sum(rate(profitcenter_message_processing_seconds_count[1h])) or vector(0)), 0.000001)
+              ) / 0.01
+          - record: nem_slo:profitcenter_processing_error_budget_burn_rate:30m
+            expr: |
+              (
+                (sum(rate(profitcenter_message_processing_seconds_count{outcome!~"success|duplicate"}[30m])) or vector(0))
+                /
+                clamp_min((sum(rate(profitcenter_message_processing_seconds_count[30m])) or vector(0)), 0.000001)
+              ) / 0.01
+          - record: nem_slo:profitcenter_processing_error_budget_burn_rate:6h
+            expr: |
+              (
+                (sum(rate(profitcenter_message_processing_seconds_count{outcome!~"success|duplicate"}[6h])) or vector(0))
+                /
+                clamp_min((sum(rate(profitcenter_message_processing_seconds_count[6h])) or vector(0)), 0.000001)
+              ) / 0.01
+          - record: nem_slo:profitcenter_processing_error_budget_burn_rate:3d
+            expr: |
+              (
+                (sum(rate(profitcenter_message_processing_seconds_count{outcome!~"success|duplicate"}[3d])) or vector(0))
+                /
+                clamp_min((sum(rate(profitcenter_message_processing_seconds_count[3d])) or vector(0)), 0.000001)
+              ) / 0.01
+          - alert: SentinelSLOErrorBudgetBurnFast
+            expr: |
+              nem_slo:sentinel_mapek_error_budget_burn_rate:5m > 14.4
+              and nem_slo:sentinel_mapek_error_budget_burn_rate:1h > 14.4
+              and sum(increase(nem_sentinel_mapek_cycles_completed_total[5m])) >= 10
+              and sum(increase(nem_sentinel_mapek_cycles_completed_total[1h])) >= 60
+            for: 2m
+            labels:
+              severity: critical
+              service: nem-sentinel
+              slo: mapek-outcome
+              team: platform
+            annotations:
+              summary: "Sentinel is burning its 1% MAPE-K error budget quickly"
+              description: "Bad MAPE-K outcomes are consuming the 1% error budget at more than 14.4x over both 5m and 1h, with sufficient traffic."
+              runbook_url: "https://github.com/rSeeFip/nem.Prometheus/blob/main/docs/runbooks/telemetry-slos.md#sentinel-error-budget-burn"
+          - alert: SentinelSLOErrorBudgetBurnMedium
+            expr: |
+              nem_slo:sentinel_mapek_error_budget_burn_rate:30m > 6
+              and nem_slo:sentinel_mapek_error_budget_burn_rate:6h > 6
+              and sum(increase(nem_sentinel_mapek_cycles_completed_total[30m])) >= 30
+              and sum(increase(nem_sentinel_mapek_cycles_completed_total[6h])) >= 360
+            for: 15m
+            labels:
+              severity: critical
+              service: nem-sentinel
+              slo: mapek-outcome
+              team: platform
+            annotations:
+              summary: "Sentinel is burning its 1% MAPE-K error budget"
+              description: "Bad MAPE-K outcomes are consuming the 1% error budget at more than 6x over both 30m and 6h, with sufficient traffic."
+              runbook_url: "https://github.com/rSeeFip/nem.Prometheus/blob/main/docs/runbooks/telemetry-slos.md#sentinel-error-budget-burn"
+          - alert: SentinelSLOErrorBudgetBurnSlow
+            expr: |
+              nem_slo:sentinel_mapek_error_budget_burn_rate:6h > 1
+              and nem_slo:sentinel_mapek_error_budget_burn_rate:3d > 1
+              and sum(increase(nem_sentinel_mapek_cycles_completed_total[6h])) >= 360
+              and sum(increase(nem_sentinel_mapek_cycles_completed_total[3d])) >= 4320
+            for: 1h
+            labels:
+              severity: warning
+              service: nem-sentinel
+              slo: mapek-outcome
+              team: platform
+            annotations:
+              summary: "Sentinel is steadily burning its 1% MAPE-K error budget"
+              description: "Bad MAPE-K outcomes are consuming the 1% error budget at more than 1x over both 6h and 3d, with sufficient traffic."
+              runbook_url: "https://github.com/rSeeFip/nem.Prometheus/blob/main/docs/runbooks/telemetry-slos.md#sentinel-error-budget-burn"
+          - alert: ProfitCenterSLOErrorBudgetBurnFast
+            expr: |
+              nem_slo:profitcenter_processing_error_budget_burn_rate:5m > 14.4
+              and nem_slo:profitcenter_processing_error_budget_burn_rate:1h > 14.4
+              and sum(increase(profitcenter_message_processing_seconds_count[5m])) >= 10
+              and sum(increase(profitcenter_message_processing_seconds_count[1h])) >= 60
+            for: 2m
+            labels:
+              severity: critical
+              service: nem-profit-center
+              slo: processing-outcome
+              team: platform
+            annotations:
+              summary: "ProfitCenter is burning its 1% processing error budget quickly"
+              description: "Non-success and non-duplicate processing outcomes are consuming the 1% error budget at more than 14.4x over both 5m and 1h, with sufficient traffic."
+              runbook_url: "https://github.com/rSeeFip/nem.Prometheus/blob/main/docs/runbooks/telemetry-slos.md#profitcenter-error-budget-burn"
+          - alert: ProfitCenterSLOErrorBudgetBurnMedium
+            expr: |
+              nem_slo:profitcenter_processing_error_budget_burn_rate:30m > 6
+              and nem_slo:profitcenter_processing_error_budget_burn_rate:6h > 6
+              and sum(increase(profitcenter_message_processing_seconds_count[30m])) >= 30
+              and sum(increase(profitcenter_message_processing_seconds_count[6h])) >= 360
+            for: 15m
+            labels:
+              severity: critical
+              service: nem-profit-center
+              slo: processing-outcome
+              team: platform
+            annotations:
+              summary: "ProfitCenter is burning its 1% processing error budget"
+              description: "Non-success and non-duplicate processing outcomes are consuming the 1% error budget at more than 6x over both 30m and 6h, with sufficient traffic."
+              runbook_url: "https://github.com/rSeeFip/nem.Prometheus/blob/main/docs/runbooks/telemetry-slos.md#profitcenter-error-budget-burn"
+          - alert: ProfitCenterSLOErrorBudgetBurnSlow
+            expr: |
+              nem_slo:profitcenter_processing_error_budget_burn_rate:6h > 1
+              and nem_slo:profitcenter_processing_error_budget_burn_rate:3d > 1
+              and sum(increase(profitcenter_message_processing_seconds_count[6h])) >= 360
+              and sum(increase(profitcenter_message_processing_seconds_count[3d])) >= 4320
+            for: 1h
+            labels:
+              severity: warning
+              service: nem-profit-center
+              slo: processing-outcome
+              team: platform
+            annotations:
+              summary: "ProfitCenter is steadily burning its 1% processing error budget"
+              description: "Non-success and non-duplicate processing outcomes are consuming the 1% error budget at more than 1x over both 6h and 3d, with sufficient traffic."
+              runbook_url: "https://github.com/rSeeFip/nem.Prometheus/blob/main/docs/runbooks/telemetry-slos.md#profitcenter-error-budget-burn"
+          - alert: Watchdog
+            expr: vector(1)
+            labels:
+              game_day: "true"
+              severity: none
+              service: prometheus
+              team: platform
+            annotations:
+              summary: "Prometheus alert pipeline watchdog"
+              description: "This dead-man alert is intentionally routed to the game-day no-op receiver."
+              runbook_url: "https://github.com/rSeeFip/nem.Prometheus/blob/main/docs/runbooks/telemetry-slos.md#watchdog-game-day"
+          - alert: AlertmanagerTargetDown
+            expr: absent(up{namespace="monitoring",service="alertmanager"}) or max(up{namespace="monitoring",service="alertmanager"}) == 0
+            for: 5m
+            labels:
+              severity: critical
+              service: alertmanager
+              team: platform
+            annotations:
+              summary: "Alertmanager metrics target is unavailable"
+              description: "Prometheus has not scraped a healthy Alertmanager Service target for five minutes."
+              runbook_url: "https://github.com/rSeeFip/nem.Prometheus/blob/main/docs/runbooks/telemetry-slos.md#alertmanager-target-down"
