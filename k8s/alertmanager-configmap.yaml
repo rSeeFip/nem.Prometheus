@@ -12,7 +12,7 @@ data:
       resolve_timeout: 5m
 
     route:
-      receiver: nem-comms
+      receiver: "null"
       group_by: ["alertname", "service", "severity"]
       group_wait: 30s
       group_interval: 5m
@@ -23,10 +23,7 @@ data:
             - 'game_day="true"'
         - receiver: nem-comms
           matchers:
-            - 'severity="critical"'
-        - receiver: nem-comms
-          matchers:
-            - 'severity="warning"'
+            - 'game_day_delivery="true"'
 
     inhibit_rules:
       - source_matchers:
@@ -36,6 +33,7 @@ data:
         equal: ["alertname", "service"]
 
     receivers:
+      - name: "null"
       - name: game-day-noop
       - name: nem-comms
         webhook_configs:

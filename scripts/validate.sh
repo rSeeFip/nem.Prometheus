@@ -119,8 +119,12 @@ assert network_policy["spec"]["egress"] == [
 prometheus = yaml.safe_load(prometheus_configmap["data"]["prometheus.yml"])
 assert prometheus["alerting"]["alertmanagers"][0]["static_configs"][0]["targets"] == ["alertmanager.monitoring.svc.cluster.local:9093"]
 alertmanager_config = yaml.safe_load(alertmanager_configmap["data"]["alertmanager.yml"])
-assert alertmanager_config["route"]["routes"][0]["receiver"] == "game-day-noop"
-assert alertmanager_config["receivers"][0] == {"name": "game-day-noop"}
+assert alertmanager_config["route"]["receiver"] == "null"
+assert alertmanager_config["route"]["routes"] == [
+    {"receiver": "game-day-noop", "matchers": ['game_day="true"']},
+    {"receiver": "nem-comms", "matchers": ['game_day_delivery="true"']},
+]
+assert alertmanager_config["receivers"][0:2] == [{"name": "null"}, {"name": "game-day-noop"}]
 PY
 
 cp "${repo_root}/tests/nem-slo-rules.test.yaml" "${prometheus_rule_tests}"
