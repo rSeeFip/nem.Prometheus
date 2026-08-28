@@ -127,10 +127,27 @@ kubectl exec -n monitoring prometheus-0 -- wget -qO- http://localhost:9090/api/v
 
 ## ProfitCenter dead-letter queue
 
-1. Inspect DLQ depth and the DLQ publish rate.
-2. Sample messages without exposing sensitive payloads in logs or tickets.
-3. Correct the consumer or schema issue, then replay through the approved process.
-4. Confirm depth returns to zero and no new dead letters arrive.
+1. Query `nem_slo:profitcenter_dead_letter_queue_ready` and the source
+   `rabbitmq_queue_messages_ready{vhost="/",queue="profitcenter.ingest.dlq"}`.
+   This is broker-reported ready-message depth, not an application-local counter.
+2. Inspect message metadata only; never expose payloads, headers, or identifiers
+   in logs or tickets, and never purge the queue to clear the alert.
+3. Correct and deploy the consumer or schema issue before replaying. Use the
+   approved bounded recovery process with publisher confirmation before source
+   acknowledgement, starting with five messages and stopping on any new failure.
+4. Confirm the primary, recovery, and recovery-error queue depths are expected,
+   then require the primary DLQ to remain at zero for 24 hours before removing
+   compatibility code.
+
+## RabbitMQ metrics target down
+
+1. Inspect `up{namespace="platform-data",service="rabbitmq"}` and Prometheus
+   `/api/v1/targets` for the `rabbitmq` job.
+2. Verify `rabbitmq.platform-data.svc.cluster.local:15692/metrics/per-object`
+   from inside the cluster and confirm the `rabbitmq_prometheus` plugin is enabled.
+3. Check the `platform-data/rabbitmq` Service endpoints and network policy. Do
+   not infer an empty DLQ while this target is absent; restore exporter scraping
+   before making replay or incident-closure decisions.
 
 ## ProfitCenter ML prediction errors
 
