@@ -1,8 +1,9 @@
-# Sentinel and ProfitCenter Telemetry SLO Runbook
+# Platform Telemetry SLO Runbook
 
 These procedures cover alerts loaded by the standalone Prometheus instance in
-the `monitoring` namespace. Start every investigation by confirming the target,
-then inspect the bounded SLI breakdown. Do not disable Sentinel safety gates or
+the `monitoring` namespace for Sentinel, ProfitCenter, and Comms. Start every
+investigation by confirming the target, then inspect the bounded SLI breakdown.
+Do not disable safety gates, bypass channel consent, expose message payloads, or
 modify production databases to clear an alert.
 
 ## Common checks
@@ -13,6 +14,56 @@ kubectl exec -n monitoring prometheus-0 -- wget -qO- http://localhost:9090/-/rea
 kubectl exec -n monitoring prometheus-0 -- wget -qO- http://localhost:9090/api/v1/targets
 kubectl exec -n monitoring prometheus-0 -- wget -qO- http://localhost:9090/api/v1/rules
 ```
+
+## Comms target down
+
+1. Query `up{namespace="nem-apps",service="nem-comms"}` and inspect the target
+   error in `/api/v1/targets`.
+2. Check `deploy/nem-comms` rollout, pod readiness, Service endpoints, and the
+   Service scrape annotations for `/metrics` on port `5280`.
+3. Curl `/health` and `/metrics` from inside the cluster, then inspect Comms and
+   OpenTelemetry Collector logs without printing secrets or message payloads.
+4. If a rollout caused the failure, restore the last known-good immutable ARM64
+   image through the approved Comms deployment workflow and verify HTTP 200 from
+   `/health` plus HTTP 401 from the unauthenticated operator route.
+
+## Comms delivery failures
+
+1. Query `nem_slo:comms_delivery_failure_ratio:5m` and group
+   `comms_channel_assistant_delivery_outcome_total` by `channel_type`,
+   `channel_scope`, and `operation_result`.
+2. Treat only `success` and `failure` as terminal outcomes. `attempt` and `retry`
+   describe delivery phases, while `duplicate` is an accepted idempotent result.
+3. Correlate failures with the bounded channel, scope, adapter traces, RabbitMQ,
+   OpenBao, and downstream provider health. Never include message text, bot
+   tokens, recipient identifiers, or tenant secrets in an incident record.
+4. Preserve federation, group, user, and channel consent gates during recovery.
+   Replay only messages proven safe and idempotent through the approved process.
+
+## Comms alert processing failures
+
+1. Query `nem_slo:comms_alert_processing_failure_ratio:5m` and group
+   `comms_alert_webhook_processing_total` by `operation_result` and
+   `alert_status`.
+2. `completed` and `failed` are terminal processing outcomes. Investigate failed
+   handler traces, Wolverine/RabbitMQ state, the receipt record, and the bounded
+   Grafana alert status before retrying.
+3. Do not classify rejected webhook ingress as a processing outage by itself;
+   rejection can be the expected result of signature, schema, or policy checks.
+4. Keep webhook authentication and tenant-policy enforcement fail closed. Never
+   weaken validation or expose the original alert payload to clear an alert.
+
+## Comms alert terminal latency
+
+1. Query `nem_slo:comms_alert_terminal_latency_seconds:p95_5m` together with the
+   terminal processing volume and failure ratio. The production histogram has a
+   ten-second bucket boundary; do not infer finer precision from this alert.
+2. Compare firing and resolved alert statuses, then inspect queue delay, handler
+   spans, persistence latency, RabbitMQ, and downstream Comms adapter health.
+3. Confirm the latency alert has at least ten terminal outcomes in its five-minute
+   gate before escalating; idle or sparse traffic must not page.
+4. Scale or replay only after proving idempotency and downstream capacity, while
+   preserving consent, classification, and tenant-isolation controls.
 
 ## Sentinel target down
 
