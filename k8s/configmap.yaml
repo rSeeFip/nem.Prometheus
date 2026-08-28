@@ -244,6 +244,74 @@ data:
               description: "Prediction errors exceeded 5% of predictions over fifteen minutes."
               runbook_url: "https://github.com/rSeeFip/nem.Prometheus/blob/main/docs/runbooks/telemetry-slos.md#profitcenter-ml-prediction-errors"
 
+      - name: nem-comms-slos
+        interval: 30s
+        rules:
+          - record: nem_slo:comms_target_available
+            expr: max(up{namespace="nem-apps",service="nem-comms"}) or vector(0)
+          - record: nem_slo:comms_delivery_failure_ratio:5m
+            expr: |
+              (sum(rate(comms_channel_assistant_delivery_outcome_total{service="nem-comms",operation_result="failure"}[5m])) or vector(0))
+              /
+              clamp_min((sum(rate(comms_channel_assistant_delivery_outcome_total{service="nem-comms",operation_result=~"success|failure"}[5m])) or vector(0)), 0.000001)
+          - record: nem_slo:comms_alert_processing_failure_ratio:5m
+            expr: |
+              (sum(rate(comms_alert_webhook_processing_total{service="nem-comms",operation_result="failed"}[5m])) or vector(0))
+              /
+              clamp_min((sum(rate(comms_alert_webhook_processing_total{service="nem-comms",operation_result=~"completed|failed"}[5m])) or vector(0)), 0.000001)
+          - record: nem_slo:comms_alert_terminal_latency_seconds:p95_5m
+            expr: histogram_quantile(0.95, sum by (le) (rate(comms_alert_webhook_receipt_to_terminal_duration_seconds_bucket{service="nem-comms"}[5m])))
+          - alert: CommsTargetDown
+            expr: absent(up{namespace="nem-apps",service="nem-comms"}) or max(up{namespace="nem-apps",service="nem-comms"}) == 0
+            for: 5m
+            labels:
+              severity: critical
+              service: nem-comms
+              team: platform
+            annotations:
+              summary: "Comms metrics target is unavailable"
+              description: "Prometheus has not scraped a healthy nem.Comms Service target for five minutes."
+              runbook_url: "https://github.com/rSeeFip/nem.Prometheus/blob/main/docs/runbooks/telemetry-slos.md#comms-target-down"
+          - alert: CommsDeliveryFailureRatioHigh
+            expr: |
+              nem_slo:comms_delivery_failure_ratio:5m > 0.05
+              and sum(increase(comms_channel_assistant_delivery_outcome_total{service="nem-comms",operation_result=~"success|failure"}[5m])) >= 10
+            for: 10m
+            labels:
+              severity: critical
+              service: nem-comms
+              team: platform
+            annotations:
+              summary: "Comms terminal delivery failure ratio exceeds 5%"
+              description: "Channel-assistant terminal delivery failures exceeded 5% for ten minutes with at least ten terminal outcomes in the five-minute window."
+              runbook_url: "https://github.com/rSeeFip/nem.Prometheus/blob/main/docs/runbooks/telemetry-slos.md#comms-delivery-failures"
+          - alert: CommsAlertProcessingFailureRatioHigh
+            expr: |
+              nem_slo:comms_alert_processing_failure_ratio:5m > 0.05
+              and sum(increase(comms_alert_webhook_processing_total{service="nem-comms",operation_result=~"completed|failed"}[5m])) >= 10
+            for: 10m
+            labels:
+              severity: critical
+              service: nem-comms
+              team: platform
+            annotations:
+              summary: "Comms alert-webhook processing failure ratio exceeds 5%"
+              description: "Alert-webhook terminal processing failures exceeded 5% for ten minutes with at least ten terminal outcomes in the five-minute window."
+              runbook_url: "https://github.com/rSeeFip/nem.Prometheus/blob/main/docs/runbooks/telemetry-slos.md#comms-alert-processing-failures"
+          - alert: CommsAlertTerminalLatencyHigh
+            expr: |
+              nem_slo:comms_alert_terminal_latency_seconds:p95_5m > 10
+              and sum(increase(comms_alert_webhook_processing_total{service="nem-comms",operation_result=~"completed|failed"}[5m])) >= 10
+            for: 10m
+            labels:
+              severity: warning
+              service: nem-comms
+              team: platform
+            annotations:
+              summary: "Comms alert-webhook p95 terminal latency exceeds ten seconds"
+              description: "Alert-webhook p95 receipt-to-terminal latency exceeded ten seconds for ten minutes with at least ten terminal outcomes in the five-minute window."
+              runbook_url: "https://github.com/rSeeFip/nem.Prometheus/blob/main/docs/runbooks/telemetry-slos.md#comms-alert-terminal-latency"
+
       - name: nem-slo-burn-rate-governance
         interval: 30s
         rules:

@@ -112,3 +112,129 @@ tests:
               summary: "Alertmanager metrics target is unavailable"
               description: "Prometheus has not scraped a healthy Alertmanager Service target for five minutes."
               runbook_url: "https://github.com/rSeeFip/nem.Prometheus/blob/main/docs/runbooks/telemetry-slos.md#alertmanager-target-down"
+
+  - name: Comms terminal failure and latency alerts fire with sustained sufficient traffic
+    interval: 1m
+    input_series:
+      - series: 'comms_channel_assistant_delivery_outcome_total{service="nem-comms",operation_result="success"}'
+        values: '0+8x30'
+      - series: 'comms_channel_assistant_delivery_outcome_total{service="nem-comms",operation_result="failure"}'
+        values: '0+2x30'
+      - series: 'comms_alert_webhook_processing_total{service="nem-comms",operation_result="completed"}'
+        values: '0+8x30'
+      - series: 'comms_alert_webhook_processing_total{service="nem-comms",operation_result="failed"}'
+        values: '0+2x30'
+      - series: 'comms_alert_webhook_receipt_to_terminal_duration_seconds_bucket{service="nem-comms",le="10"}'
+        values: '0+0x30'
+      - series: 'comms_alert_webhook_receipt_to_terminal_duration_seconds_bucket{service="nem-comms",le="25"}'
+        values: '0+10x30'
+      - series: 'comms_alert_webhook_receipt_to_terminal_duration_seconds_bucket{service="nem-comms",le="+Inf"}'
+        values: '0+10x30'
+    alert_rule_test:
+      - eval_time: 16m
+        alertname: CommsDeliveryFailureRatioHigh
+        exp_alerts:
+          - exp_labels:
+              alertname: CommsDeliveryFailureRatioHigh
+              severity: critical
+              service: nem-comms
+              team: platform
+            exp_annotations:
+              summary: "Comms terminal delivery failure ratio exceeds 5%"
+              description: "Channel-assistant terminal delivery failures exceeded 5% for ten minutes with at least ten terminal outcomes in the five-minute window."
+              runbook_url: "https://github.com/rSeeFip/nem.Prometheus/blob/main/docs/runbooks/telemetry-slos.md#comms-delivery-failures"
+      - eval_time: 16m
+        alertname: CommsAlertProcessingFailureRatioHigh
+        exp_alerts:
+          - exp_labels:
+              alertname: CommsAlertProcessingFailureRatioHigh
+              severity: critical
+              service: nem-comms
+              team: platform
+            exp_annotations:
+              summary: "Comms alert-webhook processing failure ratio exceeds 5%"
+              description: "Alert-webhook terminal processing failures exceeded 5% for ten minutes with at least ten terminal outcomes in the five-minute window."
+              runbook_url: "https://github.com/rSeeFip/nem.Prometheus/blob/main/docs/runbooks/telemetry-slos.md#comms-alert-processing-failures"
+      - eval_time: 16m
+        alertname: CommsAlertTerminalLatencyHigh
+        exp_alerts:
+          - exp_labels:
+              alertname: CommsAlertTerminalLatencyHigh
+              severity: warning
+              service: nem-comms
+              team: platform
+            exp_annotations:
+              summary: "Comms alert-webhook p95 terminal latency exceeds ten seconds"
+              description: "Alert-webhook p95 receipt-to-terminal latency exceeded ten seconds for ten minutes with at least ten terminal outcomes in the five-minute window."
+              runbook_url: "https://github.com/rSeeFip/nem.Prometheus/blob/main/docs/runbooks/telemetry-slos.md#comms-alert-terminal-latency"
+
+  - name: Healthy Comms terminal outcomes keep failure and latency alerts inactive
+    interval: 1m
+    input_series:
+      - series: 'comms_channel_assistant_delivery_outcome_total{service="nem-comms",operation_result="success"}'
+        values: '0+10x30'
+      - series: 'comms_channel_assistant_delivery_outcome_total{service="nem-comms",operation_result="failure"}'
+        values: '0+0x30'
+      - series: 'comms_alert_webhook_processing_total{service="nem-comms",operation_result="completed"}'
+        values: '0+10x30'
+      - series: 'comms_alert_webhook_processing_total{service="nem-comms",operation_result="failed"}'
+        values: '0+0x30'
+      - series: 'comms_alert_webhook_receipt_to_terminal_duration_seconds_bucket{service="nem-comms",le="5"}'
+        values: '0+10x30'
+      - series: 'comms_alert_webhook_receipt_to_terminal_duration_seconds_bucket{service="nem-comms",le="10"}'
+        values: '0+10x30'
+      - series: 'comms_alert_webhook_receipt_to_terminal_duration_seconds_bucket{service="nem-comms",le="+Inf"}'
+        values: '0+10x30'
+    alert_rule_test:
+      - eval_time: 16m
+        alertname: CommsDeliveryFailureRatioHigh
+        exp_alerts: []
+      - eval_time: 16m
+        alertname: CommsAlertProcessingFailureRatioHigh
+        exp_alerts: []
+      - eval_time: 16m
+        alertname: CommsAlertTerminalLatencyHigh
+        exp_alerts: []
+
+  - name: Low Comms traffic does not page even when every terminal outcome is bad
+    interval: 1m
+    input_series:
+      - series: 'comms_channel_assistant_delivery_outcome_total{service="nem-comms",operation_result="failure"}'
+        values: '0+1x30'
+      - series: 'comms_alert_webhook_processing_total{service="nem-comms",operation_result="failed"}'
+        values: '0+1x30'
+      - series: 'comms_alert_webhook_receipt_to_terminal_duration_seconds_bucket{service="nem-comms",le="10"}'
+        values: '0+0x30'
+      - series: 'comms_alert_webhook_receipt_to_terminal_duration_seconds_bucket{service="nem-comms",le="25"}'
+        values: '0+1x30'
+      - series: 'comms_alert_webhook_receipt_to_terminal_duration_seconds_bucket{service="nem-comms",le="+Inf"}'
+        values: '0+1x30'
+    alert_rule_test:
+      - eval_time: 16m
+        alertname: CommsDeliveryFailureRatioHigh
+        exp_alerts: []
+      - eval_time: 16m
+        alertname: CommsAlertProcessingFailureRatioHigh
+        exp_alerts: []
+      - eval_time: 16m
+        alertname: CommsAlertTerminalLatencyHigh
+        exp_alerts: []
+
+  - name: Comms target availability fires only from scrape health
+    interval: 1m
+    input_series:
+      - series: 'up{namespace="nem-apps",service="nem-comms"}'
+        values: '0+0x7'
+    alert_rule_test:
+      - eval_time: 6m
+        alertname: CommsTargetDown
+        exp_alerts:
+          - exp_labels:
+              alertname: CommsTargetDown
+              severity: critical
+              service: nem-comms
+              team: platform
+            exp_annotations:
+              summary: "Comms metrics target is unavailable"
+              description: "Prometheus has not scraped a healthy nem.Comms Service target for five minutes."
+              runbook_url: "https://github.com/rSeeFip/nem.Prometheus/blob/main/docs/runbooks/telemetry-slos.md#comms-target-down"
