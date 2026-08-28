@@ -238,3 +238,61 @@ tests:
               summary: "Comms metrics target is unavailable"
               description: "Prometheus has not scraped a healthy nem.Comms Service target for five minutes."
               runbook_url: "https://github.com/rSeeFip/nem.Prometheus/blob/main/docs/runbooks/telemetry-slos.md#comms-target-down"
+
+  - name: ProfitCenter dead-letter alert uses RabbitMQ ready-message depth
+    interval: 1m
+    input_series:
+      - series: 'rabbitmq_queue_messages_ready{namespace="platform-data",service="rabbitmq",vhost="/",queue="profitcenter.ingest.dlq"}'
+        values: '67+0x12'
+      - series: 'up{namespace="platform-data",service="rabbitmq"}'
+        values: '1+0x12'
+    alert_rule_test:
+      - eval_time: 11m
+        alertname: ProfitCenterDeadLetterQueueNotEmpty
+        exp_alerts:
+          - exp_labels:
+              alertname: ProfitCenterDeadLetterQueueNotEmpty
+              severity: warning
+              service: nem-profit-center
+              team: platform
+            exp_annotations:
+              summary: "ProfitCenter dead-letter queue is not empty"
+              description: "RabbitMQ reports one or more ready messages in profitcenter.ingest.dlq for ten minutes."
+              runbook_url: "https://github.com/rSeeFip/nem.Prometheus/blob/main/docs/runbooks/telemetry-slos.md#profitcenter-dead-letter-queue"
+      - eval_time: 11m
+        alertname: RabbitMqMetricsTargetDown
+        exp_alerts: []
+
+  - name: Empty ProfitCenter dead-letter queue stays inactive
+    interval: 1m
+    input_series:
+      - series: 'rabbitmq_queue_messages_ready{namespace="platform-data",service="rabbitmq",vhost="/",queue="profitcenter.ingest.dlq"}'
+        values: '0+0x12'
+      - series: 'up{namespace="platform-data",service="rabbitmq"}'
+        values: '1+0x12'
+    alert_rule_test:
+      - eval_time: 11m
+        alertname: ProfitCenterDeadLetterQueueNotEmpty
+        exp_alerts: []
+      - eval_time: 11m
+        alertname: RabbitMqMetricsTargetDown
+        exp_alerts: []
+
+  - name: RabbitMQ per-object metrics target availability fires from scrape health
+    interval: 1m
+    input_series:
+      - series: 'up{namespace="platform-data",service="rabbitmq"}'
+        values: '0+0x7'
+    alert_rule_test:
+      - eval_time: 6m
+        alertname: RabbitMqMetricsTargetDown
+        exp_alerts:
+          - exp_labels:
+              alertname: RabbitMqMetricsTargetDown
+              severity: critical
+              service: rabbitmq
+              team: platform
+            exp_annotations:
+              summary: "RabbitMQ metrics target is unavailable"
+              description: "Prometheus has not scraped the platform-data RabbitMQ per-object metrics endpoint for five minutes."
+              runbook_url: "https://github.com/rSeeFip/nem.Prometheus/blob/main/docs/runbooks/telemetry-slos.md#rabbitmq-metrics-target-down"

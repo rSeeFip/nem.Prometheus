@@ -26,6 +26,14 @@ data:
         static_configs:
           - targets: ["localhost:9090"]
 
+      - job_name: rabbitmq
+        metrics_path: /metrics/per-object
+        static_configs:
+          - targets: ["rabbitmq.platform-data.svc.cluster.local:15692"]
+            labels:
+              namespace: platform-data
+              service: rabbitmq
+
       - job_name: kubernetes-annotated-services
         kubernetes_sd_configs:
           - role: endpoints
@@ -149,6 +157,8 @@ data:
         rules:
           - record: nem_slo:profitcenter_target_available
             expr: max(up{namespace="nem-apps",service="nem-profit-center"}) or vector(0)
+          - record: nem_slo:profitcenter_dead_letter_queue_ready
+            expr: sum(rabbitmq_queue_messages_ready{namespace="platform-data",service="rabbitmq",vhost="/",queue="profitcenter.ingest.dlq"})
           - record: nem_slo:profitcenter_processing_accepted_ratio:5m
             expr: |
               (sum(rate(profitcenter_message_processing_seconds_count{outcome=~"success|duplicate"}[5m])) or vector(0))
@@ -222,7 +232,7 @@ data:
               description: "Publishing failures exceeded 5% of attempts for ten minutes."
               runbook_url: "https://github.com/rSeeFip/nem.Prometheus/blob/main/docs/runbooks/telemetry-slos.md#profitcenter-messaging-failures"
           - alert: ProfitCenterDeadLetterQueueNotEmpty
-            expr: max(profitcenter_messaging_dlq_count) > 0
+            expr: nem_slo:profitcenter_dead_letter_queue_ready > 0
             for: 10m
             labels:
               severity: warning
@@ -230,8 +240,19 @@ data:
               team: platform
             annotations:
               summary: "ProfitCenter dead-letter queue is not empty"
-              description: "One or more messages remained in the ProfitCenter dead-letter queue for ten minutes."
+              description: "RabbitMQ reports one or more ready messages in profitcenter.ingest.dlq for ten minutes."
               runbook_url: "https://github.com/rSeeFip/nem.Prometheus/blob/main/docs/runbooks/telemetry-slos.md#profitcenter-dead-letter-queue"
+          - alert: RabbitMqMetricsTargetDown
+            expr: absent(up{namespace="platform-data",service="rabbitmq"}) or max(up{namespace="platform-data",service="rabbitmq"}) == 0
+            for: 5m
+            labels:
+              severity: critical
+              service: rabbitmq
+              team: platform
+            annotations:
+              summary: "RabbitMQ metrics target is unavailable"
+              description: "Prometheus has not scraped the platform-data RabbitMQ per-object metrics endpoint for five minutes."
+              runbook_url: "https://github.com/rSeeFip/nem.Prometheus/blob/main/docs/runbooks/telemetry-slos.md#rabbitmq-metrics-target-down"
           - alert: ProfitCenterMlPredictionErrorsHigh
             expr: nem_slo:profitcenter_ml_prediction_error_ratio:15m > 0.05 and sum(rate(profitcenter_ml_predictions_total[15m])) > 0
             for: 15m
